@@ -28,39 +28,59 @@ pipeline {
         // ============================================================
 
         stage('Git') {
-            steps {
+    steps {
 
-                step([$class: 'WsCleanup'])
+        step([$class: 'WsCleanup'])
 
-                checkout scm
+        checkout scm
 
-                script {
+        sh '''
+            echo "=========================================="
+            echo "WORKSPACE"
+            echo "=========================================="
 
-                    env.AUTHOR_NAME = sh(
-                        script: "git log -1 --format=%aN ${env.GIT_COMMIT}",
-                        returnStdout: true
-                    ).trim()
+            pwd
 
-                    env.COMMIT_MESSAGE = sh(
-                        script: "git log -1 --format=%B ${env.GIT_COMMIT}",
-                        returnStdout: true
-                    ).trim()
+            echo "=========================================="
+            echo "FILES"
+            echo "=========================================="
 
-                    echo """
-                    ==========================================
-                    BUILD INFORMATION
-                    ==========================================
-                    Application : todo-dashboard
-                    Branch      : ${env.BRANCH_NAME}
-                    Commit      : ${env.GIT_COMMIT}
-                    Author      : ${env.AUTHOR_NAME}
-                    Message     : ${env.COMMIT_MESSAGE}
-                    Build       : ${env.BUILD_NUMBER}
-                    ==========================================
-                    """ 
+            ls -la
+
+            echo "=========================================="
+            echo "DIRECTORIES"
+            echo "=========================================="
+
+            find . -maxdepth 2 -type d | sort
+        '''
+
+        script {
+
+            env.AUTHOR_NAME = sh(
+                script: "git log -1 --format=%aN ${env.GIT_COMMIT}",
+                returnStdout: true
+            ).trim()
+
+            env.COMMIT_MESSAGE = sh(
+                script: "git log -1 --format=%B ${env.GIT_COMMIT}",
+                returnStdout: true
+            ).trim()
+
+            echo """
+            ==========================================
+            BUILD INFORMATION
+            ==========================================
+            Application : todo-dashboard
+            Branch      : ${env.BRANCH_NAME}
+            Commit      : ${env.GIT_COMMIT}
+            Author      : ${env.AUTHOR_NAME}
+            Message     : ${env.COMMIT_MESSAGE}
+            Build       : ${env.BUILD_NUMBER}
+            ==========================================
+            """
+                    }
                 }
             }
-        }
 
 
         // ============================================================
@@ -69,21 +89,15 @@ pipeline {
 
         stage('Prepare Environment') {
             steps {
-
                 script {
 
                     if (env.BRANCH_NAME == 'main') {
-
                         env.DOCKER_NAME = env.DOCKER_PROD
                         env.API_URL = 'http://api.todo.local'
-
                     } else if (env.BRANCH_NAME == 'develop') {
-
                         env.DOCKER_NAME = env.DOCKER_DEV
                         env.API_URL = 'http://api.todo-dev.local'
-
                     } else {
-
                         error("Unsupported branch: ${env.BRANCH_NAME}")
                     }
 
@@ -91,8 +105,6 @@ pipeline {
 
                     sh """
                         set -e
-
-                        cd ${FRONTEND_DIR}
 
                         echo "=========================================="
                         echo "Preparing Environment"
@@ -107,12 +119,8 @@ pipeline {
 
                         sed -i "s|^NEXT_PUBLIC_API_URL=.*|NEXT_PUBLIC_API_URL=${API_URL}|" .env.local
 
-                        echo "API URL configured:"
+                        echo "API URL:"
                         grep '^NEXT_PUBLIC_API_URL=' .env.local
-
-                        echo "=========================================="
-                        echo "Environment SUCCESS"
-                        echo "=========================================="
                     """
                 }
             }
@@ -125,30 +133,10 @@ pipeline {
 
         stage('Install Dependencies') {
             steps {
-
-                dir("${FRONTEND_DIR}") {
-
-                    sh '''
-                        set -e
-
-                        echo "=========================================="
-                        echo "Node Version"
-                        echo "=========================================="
-
-                        node --version
-                        npm --version
-
-                        echo "=========================================="
-                        echo "Installing Dependencies"
-                        echo "=========================================="
-
-                        npm ci
-
-                        echo "=========================================="
-                        echo "Dependencies SUCCESS"
-                        echo "=========================================="
-                    '''
-                }
+                sh '''
+                    set -e
+                    npm ci
+                '''
             }
         }
 
@@ -186,30 +174,14 @@ pipeline {
 
         stage('Build Image') {
             steps {
-
                 sh '''
                     set -e
-
-                    echo "=========================================="
-                    echo "Building Docker Image"
-                    echo "=========================================="
-
-                    echo "Image  : ${IMAGE}"
-                    echo "API URL: ${API_URL}"
 
                     DOCKER_BUILDKIT=1 docker build \
                         --pull \
                         -t "${IMAGE}" \
                         -f Dockerfile \
                         .
-
-                    echo "=========================================="
-                    echo "Docker Build SUCCESS"
-                    echo "=========================================="
-
-                    docker image inspect "${IMAGE}" >/dev/null
-
-                    docker images "${DOCKER_NAME}"
                 '''
             }
         }
