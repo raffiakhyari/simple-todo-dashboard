@@ -281,23 +281,57 @@ pipeline {
 
     post {
 
+        // ==========================================
+        // CI SUCCESS → TRIGGER CD
+        // ==========================================
+
         success {
             echo """
             ==========================================
             PIPELINE SUCCESS
             ==========================================
-
             Application : todo-dashboard
             Branch      : ${env.BRANCH_NAME}
             Build       : ${env.BUILD_NUMBER}
             Image       : ${env.IMAGE}
             Author      : ${env.AUTHOR_NAME}
-
             ==========================================
             """
+
+            script {
+                def cdJob = "todo-dashboard-delivery/${env.BRANCH_NAME}"
+
+                echo """
+                ==========================================
+                TRIGGER CD
+                ==========================================
+                CD Job : ${cdJob}
+                Image  : ${env.IMAGE}
+                Tag    : ${env.BUILD_NUMBER}
+                ==========================================
+                """
+
+                build job: cdJob,
+                    parameters: [
+                        string(
+                            name: 'IMAGE_REPO',
+                            value: env.DOCKER_NAME
+                        ),
+                        string(
+                            name: 'IMAGE_TAG',
+                            value: env.BUILD_NUMBER
+                        )
+                    ],
+                    wait: false
+            }
         }
 
+        // ==========================================
+        // CI FAILURE
+        // ==========================================
+
         failure {
+
             echo """
             ==========================================
             PIPELINE FAILED
@@ -307,16 +341,24 @@ pipeline {
             Branch      : ${env.BRANCH_NAME}
             Build       : ${env.BUILD_NUMBER}
 
+            CD WILL NOT BE TRIGGERED
+
             ==========================================
             """
         }
 
+        // ==========================================
+        // ALWAYS
+        // ==========================================
+
         always {
+
             script {
 
                 if (env.IMAGE) {
 
                     sh """
+
                         echo "=========================================="
                         echo "Cleaning Local Docker Image"
                         echo "=========================================="
