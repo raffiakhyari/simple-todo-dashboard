@@ -87,41 +87,23 @@ pipeline {
         // Prepare Environment
         // ============================================================
 
-        stage('Prepare Environment') {
+        stage('Prepare Image') {
             steps {
                 script {
-
                     if (env.BRANCH_NAME == 'main') {
-                        env.DOCKER_NAME = env.DOCKER_PROD
+                        env.DOCKER_NAME = 'raffiakhyari/todo-dashboard'
                         env.API_URL = 'http://api.todo.local'
                     } else if (env.BRANCH_NAME == 'develop') {
-                        env.DOCKER_NAME = env.DOCKER_DEV
+                        env.DOCKER_NAME = 'raffiakhyari/todo-dashboard-dev'
                         env.API_URL = 'http://api.todo-dev.local'
                     } else {
-                        error("Unsupported branch: ${env.BRANCH_NAME}")
+                        error "Unsupported branch: ${env.BRANCH_NAME}"
                     }
 
                     env.IMAGE = "${env.DOCKER_NAME}:${env.BUILD_NUMBER}"
 
-                    sh """
-                        set -e
-
-                        echo "=========================================="
-                        echo "Preparing Environment"
-                        echo "=========================================="
-
-                        if [ ! -f .env.example ]; then
-                            echo "ERROR: .env.example not found"
-                            exit 1
-                        fi
-
-                        cp .env.example .env.local
-
-                        sed -i "s|^NEXT_PUBLIC_API_URL=.*|NEXT_PUBLIC_API_URL=${API_URL}|" .env.local
-
-                        echo "API URL:"
-                        grep '^NEXT_PUBLIC_API_URL=' .env.local
-                    """
+                    echo "Image   : ${env.IMAGE}"
+                    echo "API URL : ${env.API_URL}"
                 }
             }
         }
@@ -175,13 +157,11 @@ pipeline {
         stage('Build Image') {
             steps {
                 sh '''
-                    set -e
-
-                    DOCKER_BUILDKIT=1 docker build \
-                        --pull \
-                        -t "${IMAGE}" \
-                        -f Dockerfile \
-                        .
+                    docker build \
+                    --pull \
+                    --build-arg NEXT_PUBLIC_API_URL="${API_URL}" \
+                    -t "${IMAGE}" \
+                    .
                 '''
             }
         }
