@@ -1,5 +1,9 @@
+FROM node:22-alpine AS base
+
+RUN npm install -g npm@11.19.1
+
 # Dependencies
-FROM node:22-alpine AS deps
+FROM base AS deps
 
 WORKDIR /app
 
@@ -8,7 +12,7 @@ COPY package.json package-lock.json ./
 RUN npm ci
 
 # Build
-FROM node:22-alpine AS builder
+FROM base AS builder
 
 WORKDIR /app
 
@@ -20,9 +24,8 @@ ENV NEXT_TELEMETRY_DISABLED=1
 
 RUN npm run build
 
-
 # Production
-FROM node:22-alpine AS runner
+FROM base AS runner
 
 WORKDIR /app
 
