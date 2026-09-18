@@ -65,148 +65,123 @@ pipeline {
         }
 
         // ============================================================
-        // Prepare Docker Image
-        // ============================================================
+// Prepare Image
+// ============================================================
+stage('Prepare Image') {
+    steps {
+        script {
+            if (env.BRANCH_NAME == 'main') {
 
-        stage('Prepare Image') {
-            steps {
-                script {
+                env.DOCKER_NAME = env.DOCKER_PROD
+                env.API_URL = 'http://api.todo.local'
 
-                     if (env.BRANCH_NAME == 'main') {
-                        env.DOCKER_NAME = env.DOCKER_PROD
-                        env.API_URL = 'http://api.todo.local'
-                    } else if (env.BRANCH_NAME == 'develop') {
-                        env.DOCKER_NAME = env.DOCKER_DEV
-                        env.API_URL = 'http://api.todo-dev.local'
-                    } else {
-                        error("Unsupported branch: ${env.BRANCH_NAME}")
+            } else if (env.BRANCH_NAME == 'develop') {
+
+                env.DOCKER_NAME = env.DOCKER_DEV
+                env.API_URL = 'http://api.todo-dev.local'
+
+            } else {
+                error("Unsupported branch: ${env.BRANCH_NAME}")
+            }
+
+            env.IMAGE = "${env.DOCKER_NAME}:${env.BUILD_NUMBER}"
+
+            echo """
+            ==========================================
+            DOCKER IMAGE
+            ==========================================
+            Branch : ${env.BRANCH_NAME}
+            Image  : ${env.IMAGE}
+            API URL: ${env.API_URL}
+            ==========================================
+            """
                     }
-
-                    env.IMAGE = "${env.DOCKER_NAME}:${env.BUILD_NUMBER}"
-
-                    echo """
-                    ==========================================
-                    DOCKER IMAGE
-                    ==========================================
-                    Branch : ${env.BRANCH_NAME}
-                    Image  : ${env.IMAGE}
-                    API URL: ${env.API_URL}
-                    ==========================================
-                    """
                 }
             }
-        }
 
-        // ============================================================
-        // Install Dependencies
-        // ============================================================
+            // ============================================================
+            // Install Dependencies
+            // ============================================================
+            stage('Install Dependencies') {
+                steps {
+                    dir("${FRONTEND_DIR}") {
+                        sh '''
+                            set -e
 
-        stage('Install Dependencies') {
-            steps {
-                dir("${FRONTEND_DIR}") {
+                            echo "=========================================="
+                            echo "Node Version"
+                            echo "=========================================="
+
+                            node --version
+                            npm --version
+
+                            echo "=========================================="
+                            echo "Installing Dependencies"
+                            echo "=========================================="
+
+                            npm ci
+
+                            echo "=========================================="
+                            echo "Dependencies SUCCESS"
+                            echo "=========================================="
+                        '''
+                    }
+                }
+            }
+
+            // ============================================================
+            // Lint
+            // ============================================================
+            stage('Lint') {
+                steps {
+                    dir("${FRONTEND_DIR}") {
+                        sh '''
+                            set -e
+
+                            echo "=========================================="
+                            echo "Running ESLint"
+                            echo "=========================================="
+
+                            npm run lint
+
+                            echo "=========================================="
+                            echo "Lint SUCCESS"
+                            echo "=========================================="
+                        '''
+                    }
+                }
+            }
+
+            // ============================================================
+            // Docker Build
+            // ============================================================
+            stage('Build Image') {
+                steps {
                     sh '''
                         set -e
 
                         echo "=========================================="
-                        echo "Node Version"
+                        echo "Building Docker Image"
                         echo "=========================================="
 
-                        node --version
-                        npm --version
+                        echo "Image  : ${IMAGE}"
+                        echo "API URL: ${API_URL}"
+
+                        DOCKER_BUILDKIT=1 docker build \
+                            --pull \
+                            --build-arg NEXT_PUBLIC_API_URL="${API_URL}" \
+                            -t "${IMAGE}" \
+                            -f Dockerfile \
+                            .
 
                         echo "=========================================="
-                        echo "Installing Dependencies"
+                        echo "Docker Build SUCCESS"
                         echo "=========================================="
 
-                        npm ci
-
-                        echo "=========================================="
-                        echo "Dependencies SUCCESS"
-                        echo "=========================================="
+                        docker images "${DOCKER_NAME}"
                     '''
                 }
             }
-        }
-
-        // ============================================================
-        // Lint
-        // ============================================================
-
-        stage('Lint') {
-            steps {
-                dir("${FRONTEND_DIR}") {
-                    sh '''
-                        set -e
-
-                        echo "=========================================="
-                        echo "Running ESLint"
-                        echo "=========================================="
-
-                        npm run lint
-
-                        echo "=========================================="
-                        echo "Lint SUCCESS"
-                        echo "=========================================="
-                    '''
-                }
-            }
-        }
-
-        // ============================================================
-        // Build Next.js
-        // ============================================================
-
-        stage('Build Next.js') {
-            steps {
-                dir("${FRONTEND_DIR}") {
-                    sh '''
-                        set -e
-
-                        echo "=========================================="
-                        echo "Building Next.js Application"
-                        echo "=========================================="
-
-                        npm run build
-
-                        echo "=========================================="
-                        echo "Next.js Build SUCCESS"
-                        echo "=========================================="
-                    '''
-                }
-            }
-        }
-
-        // ============================================================
-        // Docker Build
-        // ============================================================
-
-        stage('Build Image') {
-            steps {
-                sh '''
-                    set -e
-
-                    echo "=========================================="
-                    echo "Building Docker Image"
-                    echo "=========================================="
-
-                    echo "Image: ${IMAGE}"
-
-                    DOCKER_BUILDKIT=1 docker build \
-                        --pull \
-                        --build-arg NEXT_PUBLIC_API_URL="${API_URL}" \
-                        -t "${IMAGE}" \
-                        -f Dockerfile \
-                        .
-
-                    echo "=========================================="
-                    echo "Docker Build SUCCESS"
-                    echo "=========================================="
-
-                    docker images "${DOCKER_NAME}"
-                '''
-            }
-        }
-
         // ============================================================
         // Trivy Security Scan
         // ============================================================
