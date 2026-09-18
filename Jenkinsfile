@@ -72,10 +72,14 @@ pipeline {
             steps {
                 script {
 
-                    if (env.BRANCH_NAME == 'main') {
+                     if (env.BRANCH_NAME == 'main') {
                         env.DOCKER_NAME = env.DOCKER_PROD
-                    } else {
+                        env.API_URL = 'http://api.todo.local'
+                    } else if (env.BRANCH_NAME == 'develop') {
                         env.DOCKER_NAME = env.DOCKER_DEV
+                        env.API_URL = 'http://api.todo-dev.local'
+                    } else {
+                        error("Unsupported branch: ${env.BRANCH_NAME}")
                     }
 
                     env.IMAGE = "${env.DOCKER_NAME}:${env.BUILD_NUMBER}"
@@ -86,6 +90,7 @@ pipeline {
                     ==========================================
                     Branch : ${env.BRANCH_NAME}
                     Image  : ${env.IMAGE}
+                    API URL: ${env.API_URL}
                     ==========================================
                     """
                 }
@@ -188,6 +193,7 @@ pipeline {
 
                     DOCKER_BUILDKIT=1 docker build \
                         --pull \
+                        --build-arg NEXT_PUBLIC_API_URL="${API_URL}" \
                         -t "${IMAGE}" \
                         -f Dockerfile \
                         .
