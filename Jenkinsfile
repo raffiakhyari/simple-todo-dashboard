@@ -189,8 +189,8 @@ pipeline {
                     DOCKER_BUILDKIT=1 docker build \
                         --pull \
                         -t "${IMAGE}" \
-                        -f "${FRONTEND_DIR}/Dockerfile" \
-                        "${FRONTEND_DIR}"
+                        -f Dockerfile \
+                        .
 
                     echo "=========================================="
                     echo "Docker Build SUCCESS"
