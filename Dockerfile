@@ -28,7 +28,9 @@ ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 ENV NEXT_TELEMETRY_DISABLED=1
 
-RUN npm run build -- --webpack
+RUN npm run build -- --webpack && \
+    echo "===== NEXT BUILD OUTPUT =====" && \
+    find /app/.next -maxdepth 2 -type d | sort
 
 # ============================================================
 # Runner
