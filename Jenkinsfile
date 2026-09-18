@@ -3,15 +3,18 @@ pipeline {
     agent any
 
     environment {
+
         REGISTRY = 'docker.io'
 
         DOCKER_DEV  = 'raffiakhyari/todo-dashboard-dev'
+
         DOCKER_PROD = 'raffiakhyari/todo-dashboard'
 
         FRONTEND_DIR = 'app'
     }
 
     options {
+
         timestamps()
 
         disableConcurrentBuilds()
@@ -32,12 +35,15 @@ pipeline {
         // ============================================================
 
         stage('Git') {
+
             steps {
+
                 step([$class: 'WsCleanup'])
 
                 checkout scm
 
                 script {
+
                     env.AUTHOR_NAME = sh(
                         script: "git log -1 --format=%aN ${env.GIT_COMMIT}",
                         returnStdout: true
@@ -64,130 +70,162 @@ pipeline {
             }
         }
 
+
         // ============================================================
-// Prepare Image
-// ============================================================
-stage('Prepare Image') {
-    steps {
-        script {
-            if (env.BRANCH_NAME == 'main') {
+        // Prepare Environment
+        // ============================================================
 
-                env.DOCKER_NAME = env.DOCKER_PROD
-                env.API_URL = 'http://api.todo.local'
+        stage('Prepare Environment') {
 
-            } else if (env.BRANCH_NAME == 'develop') {
+            steps {
 
-                env.DOCKER_NAME = env.DOCKER_DEV
-                env.API_URL = 'http://api.todo-dev.local'
+                script {
 
-            } else {
-                error("Unsupported branch: ${env.BRANCH_NAME}")
-            }
+                    if (env.BRANCH_NAME == 'main') {
 
-            env.IMAGE = "${env.DOCKER_NAME}:${env.BUILD_NUMBER}"
+                        env.DOCKER_NAME = env.DOCKER_PROD
+                        env.API_URL = 'http://api.todo.local'
 
-            echo """
-            ==========================================
-            DOCKER IMAGE
-            ==========================================
-            Branch : ${env.BRANCH_NAME}
-            Image  : ${env.IMAGE}
-            API URL: ${env.API_URL}
-            ==========================================
-            """
+                    } else if (env.BRANCH_NAME == 'develop') {
+
+                        env.DOCKER_NAME = env.DOCKER_DEV
+                        env.API_URL = 'http://api.todo-dev.local'
+
+                    } else {
+
+                        error("Unsupported branch: ${env.BRANCH_NAME}")
                     }
+
+                    env.IMAGE = "${env.DOCKER_NAME}:${env.BUILD_NUMBER}"
+
+                    sh """
+                        cd ${FRONTEND_DIR}
+
+                        echo "=========================================="
+                        echo "Preparing Environment"
+                        echo "=========================================="
+
+                        cp .env.example .env.local
+
+                        sed -i "s|^NEXT_PUBLIC_API_URL=.*|NEXT_PUBLIC_API_URL=${API_URL}|" .env.local
+
+                        echo "Generated .env.local:"
+                        grep '^NEXT_PUBLIC_API_URL=' .env.local
+
+                        echo "=========================================="
+                        echo "Environment SUCCESS"
+                        echo "=========================================="
+                    """
                 }
             }
+        }
 
-            // ============================================================
-            // Install Dependencies
-            // ============================================================
-            stage('Install Dependencies') {
-                steps {
-                    dir("${FRONTEND_DIR}") {
-                        sh '''
-                            set -e
 
-                            echo "=========================================="
-                            echo "Node Version"
-                            echo "=========================================="
+        // ============================================================
+        // Install Dependencies
+        // ============================================================
 
-                            node --version
-                            npm --version
+        stage('Install Dependencies') {
 
-                            echo "=========================================="
-                            echo "Installing Dependencies"
-                            echo "=========================================="
+            steps {
 
-                            npm ci
+                dir("${FRONTEND_DIR}") {
 
-                            echo "=========================================="
-                            echo "Dependencies SUCCESS"
-                            echo "=========================================="
-                        '''
-                    }
-                }
-            }
-
-            // ============================================================
-            // Lint
-            // ============================================================
-            stage('Lint') {
-                steps {
-                    dir("${FRONTEND_DIR}") {
-                        sh '''
-                            set -e
-
-                            echo "=========================================="
-                            echo "Running ESLint"
-                            echo "=========================================="
-
-                            npm run lint
-
-                            echo "=========================================="
-                            echo "Lint SUCCESS"
-                            echo "=========================================="
-                        '''
-                    }
-                }
-            }
-
-            // ============================================================
-            // Docker Build
-            // ============================================================
-            stage('Build Image') {
-                steps {
                     sh '''
                         set -e
 
                         echo "=========================================="
-                        echo "Building Docker Image"
+                        echo "Node Version"
                         echo "=========================================="
 
-                        echo "Image  : ${IMAGE}"
-                        echo "API URL: ${API_URL}"
-
-                        DOCKER_BUILDKIT=1 docker build \
-                            --pull \
-                            --build-arg NEXT_PUBLIC_API_URL="${API_URL}" \
-                            -t "${IMAGE}" \
-                            -f Dockerfile \
-                            .
+                        node --version
+                        npm --version
 
                         echo "=========================================="
-                        echo "Docker Build SUCCESS"
+                        echo "Installing Dependencies"
                         echo "=========================================="
 
-                        docker images "${DOCKER_NAME}"
+                        npm ci
+
+                        echo "=========================================="
+                        echo "Dependencies SUCCESS"
+                        echo "=========================================="
                     '''
                 }
             }
+        }
+
+
+        // ============================================================
+        // Lint
+        // ============================================================
+
+        stage('Lint') {
+
+            steps {
+
+                dir("${FRONTEND_DIR}") {
+
+                    sh '''
+                        set -e
+
+                        echo "=========================================="
+                        echo "Running ESLint"
+                        echo "=========================================="
+
+                        npm run lint
+
+                        echo "=========================================="
+                        echo "Lint SUCCESS"
+                        echo "=========================================="
+                    '''
+                }
+            }
+        }
+
+
+        // ============================================================
+        // Docker Build
+        // ============================================================
+
+        stage('Build Image') {
+
+            steps {
+
+                sh '''
+                    set -e
+
+                    echo "=========================================="
+                    echo "Building Docker Image"
+                    echo "=========================================="
+
+                    echo "Image  : ${IMAGE}"
+                    echo "API URL: ${API_URL}"
+
+                    DOCKER_BUILDKIT=1 docker build \
+                        --pull \
+                        -t "${IMAGE}" \
+                        -f Dockerfile \
+                        .
+
+                    echo "=========================================="
+                    echo "Docker Build SUCCESS"
+                    echo "=========================================="
+
+                    docker images "${DOCKER_NAME}"
+                '''
+            }
+        }
+
+
         // ============================================================
         // Trivy Security Scan
         // ============================================================
 
         stage('Trivy Scan') {
+
             steps {
+
                 sh '''
                     set -e
 
@@ -208,19 +246,23 @@ stage('Prepare Image') {
             }
         }
 
+
         // ============================================================
         // Push Docker Image
         // ============================================================
 
         stage('Push Image') {
+
             steps {
 
                 withCredentials([
+
                     usernamePassword(
                         credentialsId: 'dockerhub-credentials',
                         usernameVariable: 'DOCKER_USERNAME',
                         passwordVariable: 'DOCKER_PASSWORD'
                     )
+
                 ]) {
 
                     sh '''
@@ -256,6 +298,7 @@ stage('Prepare Image') {
         }
     }
 
+
     // ================================================================
     // Post Actions
     // ================================================================
@@ -267,6 +310,7 @@ stage('Prepare Image') {
         // ==========================================
 
         success {
+
             echo """
             ==========================================
             PIPELINE SUCCESS
@@ -280,7 +324,9 @@ stage('Prepare Image') {
             """
 
             script {
-                def cdJob = "todo-dashboard-delivery/${env.BRANCH_NAME}"
+
+                def cdJob =
+                    "todo-dashboard-delivery/${env.BRANCH_NAME}"
 
                 echo """
                 ==========================================
@@ -293,19 +339,24 @@ stage('Prepare Image') {
                 """
 
                 build job: cdJob,
+
                     parameters: [
+
                         string(
                             name: 'IMAGE_REPO',
                             value: env.DOCKER_NAME
                         ),
+
                         string(
                             name: 'IMAGE_TAG',
                             value: env.BUILD_NUMBER
                         )
                     ],
+
                     wait: false
             }
         }
+
 
         // ==========================================
         // CI FAILURE
@@ -317,7 +368,6 @@ stage('Prepare Image') {
             ==========================================
             PIPELINE FAILED
             ==========================================
-
             Application : todo-dashboard
             Branch      : ${env.BRANCH_NAME}
             Build       : ${env.BUILD_NUMBER}
@@ -328,6 +378,7 @@ stage('Prepare Image') {
             """
         }
 
+
         // ==========================================
         // ALWAYS
         // ==========================================
@@ -336,10 +387,18 @@ stage('Prepare Image') {
 
             script {
 
+                // Remove generated environment file
+                sh """
+                    if [ -f "${FRONTEND_DIR}/.env.local" ]; then
+                        echo "Removing generated .env.local"
+                        rm -f "${FRONTEND_DIR}/.env.local"
+                    fi
+                """
+
+                // Remove local Docker image
                 if (env.IMAGE) {
 
                     sh """
-
                         echo "=========================================="
                         echo "Cleaning Local Docker Image"
                         echo "=========================================="
