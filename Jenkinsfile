@@ -3,22 +3,15 @@ pipeline {
     agent any
 
     environment {
-
-        REGISTRY = 'docker.io'
-
-        DOCKER_DEV  = 'raffiakhyari/todo-dashboard-dev'
-
-        DOCKER_PROD = 'raffiakhyari/todo-dashboard'
-
-        FRONTEND_DIR = 'app'
+        REGISTRY      = 'docker.io'
+        DOCKER_DEV    = 'raffiakhyari/todo-dashboard-dev'
+        DOCKER_PROD   = 'raffiakhyari/todo-dashboard'
+        FRONTEND_DIR  = 'app'
     }
 
     options {
-
         timestamps()
-
         disableConcurrentBuilds()
-
         skipDefaultCheckout(true)
 
         buildDiscarder(
@@ -35,7 +28,6 @@ pipeline {
         // ============================================================
 
         stage('Git') {
-
             steps {
 
                 step([$class: 'WsCleanup'])
@@ -65,7 +57,7 @@ pipeline {
                     Message     : ${env.COMMIT_MESSAGE}
                     Build       : ${env.BUILD_NUMBER}
                     ==========================================
-                    """
+                    """ 
                 }
             }
         }
@@ -76,7 +68,6 @@ pipeline {
         // ============================================================
 
         stage('Prepare Environment') {
-
             steps {
 
                 script {
@@ -99,17 +90,24 @@ pipeline {
                     env.IMAGE = "${env.DOCKER_NAME}:${env.BUILD_NUMBER}"
 
                     sh """
+                        set -e
+
                         cd ${FRONTEND_DIR}
 
                         echo "=========================================="
                         echo "Preparing Environment"
                         echo "=========================================="
 
+                        if [ ! -f .env.example ]; then
+                            echo "ERROR: .env.example not found"
+                            exit 1
+                        fi
+
                         cp .env.example .env.local
 
                         sed -i "s|^NEXT_PUBLIC_API_URL=.*|NEXT_PUBLIC_API_URL=${API_URL}|" .env.local
 
-                        echo "Generated .env.local:"
+                        echo "API URL configured:"
                         grep '^NEXT_PUBLIC_API_URL=' .env.local
 
                         echo "=========================================="
@@ -126,7 +124,6 @@ pipeline {
         // ============================================================
 
         stage('Install Dependencies') {
-
             steps {
 
                 dir("${FRONTEND_DIR}") {
@@ -161,7 +158,6 @@ pipeline {
         // ============================================================
 
         stage('Lint') {
-
             steps {
 
                 dir("${FRONTEND_DIR}") {
@@ -189,7 +185,6 @@ pipeline {
         // ============================================================
 
         stage('Build Image') {
-
             steps {
 
                 sh '''
@@ -212,6 +207,8 @@ pipeline {
                     echo "Docker Build SUCCESS"
                     echo "=========================================="
 
+                    docker image inspect "${IMAGE}" >/dev/null
+
                     docker images "${DOCKER_NAME}"
                 '''
             }
@@ -223,7 +220,6 @@ pipeline {
         // ============================================================
 
         stage('Trivy Scan') {
-
             steps {
 
                 sh '''
@@ -240,7 +236,7 @@ pipeline {
                         "${IMAGE}"
 
                     echo "=========================================="
-                    echo "Trivy Scan SUCCESS"
+                    echo "Trivy Scan COMPLETED"
                     echo "=========================================="
                 '''
             }
@@ -252,7 +248,6 @@ pipeline {
         // ============================================================
 
         stage('Push Image') {
-
             steps {
 
                 withCredentials([
@@ -284,14 +279,10 @@ pipeline {
                         docker push "${IMAGE}"
 
                         echo "=========================================="
-                        echo "Docker Logout"
-                        echo "=========================================="
-
-                        docker logout "${REGISTRY}"
-
-                        echo "=========================================="
                         echo "Push SUCCESS"
                         echo "=========================================="
+
+                        docker logout "${REGISTRY}" || true
                     '''
                 }
             }
@@ -305,9 +296,9 @@ pipeline {
 
     post {
 
-        // ==========================================
-        // CI SUCCESS → TRIGGER CD
-        // ==========================================
+        // ============================================================
+        // SUCCESS → TRIGGER CD
+        // ============================================================
 
         success {
 
@@ -358,9 +349,9 @@ pipeline {
         }
 
 
-        // ==========================================
-        // CI FAILURE
-        // ==========================================
+        // ============================================================
+        // FAILURE
+        // ============================================================
 
         failure {
 
@@ -379,35 +370,58 @@ pipeline {
         }
 
 
-        // ==========================================
+        // ============================================================
         // ALWAYS
-        // ==========================================
+        // ============================================================
 
         always {
 
             script {
 
-                // Remove generated environment file
+                echo "=========================================="
+                echo "Cleanup"
+                echo "=========================================="
+
+                // ------------------------------------------
+                // Remove generated .env.local
+                // ------------------------------------------
+
                 sh """
                     if [ -f "${FRONTEND_DIR}/.env.local" ]; then
                         echo "Removing generated .env.local"
                         rm -f "${FRONTEND_DIR}/.env.local"
+                    else
+                        echo ".env.local not found - nothing to remove"
                     fi
                 """
 
-                // Remove local Docker image
+
+                // ------------------------------------------
+                // Remove Docker image
+                // ------------------------------------------
+
                 if (env.IMAGE) {
 
                     sh """
-                        echo "=========================================="
-                        echo "Cleaning Local Docker Image"
-                        echo "=========================================="
+                        if docker image inspect "${env.IMAGE}" >/dev/null 2>&1; then
 
-                        docker image rm \
-                            "${env.IMAGE}" \
-                            || true
+                            echo "Removing Docker image:"
+                            echo "${env.IMAGE}"
+
+                            docker image rm "${env.IMAGE}" || true
+
+                        else
+
+                            echo "Docker image not found:"
+                            echo "${env.IMAGE}"
+
+                        fi
                     """
                 }
+
+                echo "=========================================="
+                echo "Cleanup COMPLETED"
+                echo "=========================================="
             }
         }
     }
