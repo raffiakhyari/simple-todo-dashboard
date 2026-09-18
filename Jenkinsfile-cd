@@ -281,98 +281,105 @@ pipeline {
                 '''
             }
         }
+
+        // ============================================================
+        // VERIFY
+        // ============================================================
+
+        stage('Verify') {
+            steps {
+                sh '''
+                    set -e
+
+                    echo "=========================================="
+                    echo "DEPLOYMENT VERIFICATION"
+                    echo "=========================================="
+
+                    echo "=========================================="
+                    echo "Deployment"
+                    echo "=========================================="
+
+                    kubectl get deployment \
+                        todo-dashboard \
+                        -n "${K8S_NAMESPACE}"
+
+                    echo "=========================================="
+                    echo "Pods"
+                    echo "=========================================="
+
+                    kubectl get pods \
+                        -n "${K8S_NAMESPACE}" \
+                        -l app=todo-dashboard \
+                        -o wide
+
+                    echo "=========================================="
+                    echo "Service"
+                    echo "=========================================="
+
+                    kubectl get service \
+                        todo-dashboard \
+                        -n "${K8S_NAMESPACE}"
+
+                    echo "=========================================="
+                    echo "Ingress"
+                    echo "=========================================="
+
+                    kubectl get ingress \
+                        -n "${K8S_NAMESPACE}"
+
+                    echo "=========================================="
+                    echo "Current Image"
+                    echo "=========================================="
+
+                    kubectl get deployment todo-dashboard \
+                        -n "${K8S_NAMESPACE}" \
+                        -o jsonpath='{.spec.template.spec.containers[0].image}{"\\n"}'
+
+                    echo "=========================================="
+                    echo "Rollout Status"
+                    echo "=========================================="
+
+                    kubectl rollout status \
+                        deployment/todo-dashboard \
+                        -n "${K8S_NAMESPACE}" \
+                        --timeout=30s
+                '''
+            }
+        }
     }
 
-    post {
+    // ================================================================
+    // POST
+    // ================================================================
 
-        // ==========================================
-        // CI SUCCESS → TRIGGER CD
-        // ==========================================
+    post {
 
         success {
             echo """
             ==========================================
-            PIPELINE SUCCESS
+            CD PIPELINE SUCCESS
             ==========================================
             Application : todo-dashboard
             Branch      : ${env.BRANCH_NAME}
-            Build       : ${env.BUILD_NUMBER}
+            Environment : ${env.DEPLOY_ENV}
+            Namespace   : ${env.K8S_NAMESPACE}
             Image       : ${env.IMAGE}
-            Author      : ${env.AUTHOR_NAME}
             ==========================================
             """
-
-            script {
-                def cdJob = "todo-dashboard-delivery/${env.BRANCH_NAME}"
-
-                echo """
-                ==========================================
-                TRIGGER CD
-                ==========================================
-                CD Job : ${cdJob}
-                Image  : ${env.IMAGE}
-                Tag    : ${env.BUILD_NUMBER}
-                ==========================================
-                """
-
-                build job: cdJob,
-                    parameters: [
-                        string(
-                            name: 'IMAGE_REPO',
-                            value: env.DOCKER_NAME
-                        ),
-                        string(
-                            name: 'IMAGE_TAG',
-                            value: env.BUILD_NUMBER
-                        )
-                    ],
-                    wait: false
-            }
         }
-
-        // ==========================================
-        // CI FAILURE
-        // ==========================================
 
         failure {
-
             echo """
             ==========================================
-            PIPELINE FAILED
+            CD PIPELINE FAILED
             ==========================================
-
             Application : todo-dashboard
             Branch      : ${env.BRANCH_NAME}
-            Build       : ${env.BUILD_NUMBER}
-
-            CD WILL NOT BE TRIGGERED
-
+            Environment : ${env.DEPLOY_ENV}
+            Namespace   : ${env.K8S_NAMESPACE}
+            Image       : ${env.IMAGE}
             ==========================================
             """
-        }
-
-        // ==========================================
-        // ALWAYS
-        // ==========================================
-
-        always {
-
-            script {
-
-                if (env.IMAGE) {
-
-                    sh """
-
-                        echo "=========================================="
-                        echo "Cleaning Local Docker Image"
-                        echo "=========================================="
-
-                        docker image rm \
-                            "${env.IMAGE}" \
-                            || true
-                    """
-                }
-            }
         }
     }
 }
