@@ -90,6 +90,7 @@ pipeline {
                     ==========================================
                     Branch : ${env.BRANCH_NAME}
                     Image  : ${env.IMAGE}
+                    API URL: ${env.API_URL}
                     ==========================================
                     """
                 }
@@ -192,6 +193,7 @@ pipeline {
 
                     DOCKER_BUILDKIT=1 docker build \
                         --pull \
+                        --build-arg NEXT_PUBLIC_API_URL="${API_URL}" \
                         -t "${IMAGE}" \
                         -f Dockerfile \
                         .
